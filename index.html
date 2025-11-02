@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cartão AR Cliente - MindAR</title>
+
+  <!-- A-Frame e MindAR -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    body { margin:0; overflow:hidden; font-family:system-ui,sans-serif; background:#000; color:#fff; }
+    #status {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.7); padding: 8px 16px; border-radius: 8px; font-size: 14px; z-index: 10;
+    }
+    a-scene { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="status">Aponte a câmera para a imagem...</div>
+
+  <a-scene
+    mindar-image="imageTargetSrc: #targets; filterMinCF: 0.1; filterBeta: 10"
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets id="assets">
+      <!-- .mind carregado explicitamente como binário -->
+      <a-asset-item id="targets" src="./mindar/papainoel.mind" response-type="arraybuffer"></a-asset-item>
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- Cada alvo cria seu próprio vídeo/plane dinamicamente -->
+    <a-entity mindar-image-target="targetIndex: 0" cliente-ar="nomeCliente: Ingrid; videoId: videoIngrid"></a-entity>
+    <a-entity mindar-image-target="targetIndex: 1" cliente-ar="nomeCliente: Laura;  videoId: videoLaura"></a-entity>
+  </a-scene>
+
+  <!-- Firebase (expondo função no window) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
+    import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAQaVmj1MBbIoOCod-vRZvG1Z4DGxo3ZO4",
+      authDomain: "cartao-ar-clientes.firebaseapp.com",
+      projectId: "cartao-ar-clientes",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
+    window.buscarVideoCliente = async function(nomeCliente) {
+      const q = query(collection(db, "clientes"), where("nome", "==", nomeCliente));
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) throw new Error("Cliente não encontrado!");
+      return snapshot.docs[0].data(); // deve conter 'videourl'
+    };
+  </script>
+
+  <!-- Componente A-Frame -->
+  <script type="module">
+    window.addEventListener('load', () => {
+      const statusEl = document.getElementById("status");
+      const assetsEl = document.getElementById("assets");
+
+      AFRAME.registerComponent('cliente-ar', {
+        schema: {
+          nomeCliente: { type: 'string' },
+          videoId:     { type: 'string' }
+        },
+
+        init: function () {
+          const { nomeCliente, videoId } = this.data;
+          const targetEl = this.el;
+
+          statusEl.textContent = `Carregando vídeo de ${nomeCliente}...`;
+
+          window.buscarVideoCliente(nomeCliente)
+            .then((dados) => {
+              const urlVideo = dados.videourl;
+              console.log(`🎬 URL do vídeo de ${nomeCliente}:`, urlVideo);
+
+              if (!urlVideo) {
+                statusEl.textContent = `Erro: 'videourl' de ${nomeCliente} não definido no Firestore.`;
+                return;
+              }
+
+              // 1) Cria <video> dinamicamente dentro de <a-assets>
+              const v = document.createElement('video');
+              v.id = videoId;
+              v.src = urlVideo;
+              v.setAttribute('preload','auto');
+              v.setAttribute('muted','');                 // autoplay mobile
+              v.setAttribute('playsinline','');
+              v.setAttribute('webkit-playsinline','');
+              v.setAttribute('loop','');
+              v.setAttribute('crossorigin','anonymous');   // CORS Firebase
+              assetsEl.appendChild(v);
+              v.load();
+
+              // 2) Quando houver dados, cria o plano apontando para #videoId
+              v.addEventListener('loadeddata', () => {
+                this.adicionarVideoPlane(`#${videoId}`);
+                statusEl.textContent = "Pronto. Aponte a câmera para a imagem.";
+              });
+
+              // 3) Controle play/pause conforme tracking
+              targetEl.addEventListener('targetFound', () => {
+                console.log(`🎯 Imagem de ${nomeCliente} rastreada!`);
+                v.play().catch(e => console.error("Erro ao tocar vídeo:", e));
+              });
+
+              targetEl.addEventListener('targetLost', () => {
+                console.log(`❌ Imagem de ${nomeCliente} perdida.`);
+                v.pause();
+              });
+            })
+            .catch((err) => {
+              console.error(`Erro ao buscar ${nomeCliente} no Firebase:`, err);
+              statusEl.textContent = `Erro ao carregar cliente: ${err.message}`;
+            });
+        },
+
+        adicionarVideoPlane: function (srcSelector) {
+          const { nomeCliente } = this.data;
+          const plane = document.createElement('a-plane');
+
+          plane.setAttribute('src', srcSelector);              // usa #videoId
+          plane.setAttribute('crossorigin', 'anonymous');      // por segurança
+          plane.setAttribute('width',  '1.777');
+          plane.setAttribute('height', '1.0');
+          plane.setAttribute('position', '0 0 0.05');
+          plane.setAttribute('rotation', '0 0 0');
+          plane.setAttribute('material', 'shader: flat; transparent: true; opacity: 1;');
+
+          this.el.appendChild(plane);
+          console.log(`✅ Plano de vídeo para ${nomeCliente} adicionado.`);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
+
