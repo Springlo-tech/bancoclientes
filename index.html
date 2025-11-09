@@ -1,201 +1,201 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cartão AR - Clientes</title>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cartão AR Cliente - MindAR (cliente único + economia)</title>
 
-    <!-- ✅ A-Frame + MindAR -->
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <!-- A-Frame e MindAR -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
-    <style>
-      body {
-        margin: 0;
-        overflow: hidden;
-        background: #000;
-        font-family: Arial, sans-serif;
-      }
-      #status {
-        position: fixed;
-        bottom: 10px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(0, 0, 0, 0.6);
-        color: #00ffcc;
-        padding: 8px 16px;
-        border-radius: 10px;
-        font-size: 14px;
-      }
-      #iniciarBtn {
-        position: fixed;
-        top: 10px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #00ffcc;
-        color: #000;
-        font-weight: bold;
-        border: none;
-        border-radius: 10px;
-        padding: 10px 20px;
-        cursor: pointer;
-      }
-      #iniciarBtn:hover {
-        background: #00ccaa;
-      }
-    </style>
-  </head>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:system-ui,sans-serif; }
+    #status {
+      position:absolute; top:10px; left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,.7); padding:8px 14px; border-radius:8px; z-index:20; font-size:14px;
+      max-width:92vw; text-align:center; line-height:1.35;
+    }
+    #gate {
+      position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:12px; background:#000; color:#fff; z-index:30;
+    }
+    #gate button{
+      padding:12px 18px; border:0; border-radius:10px; background:#22c55e; color:#fff; font-weight:700; cursor:pointer;
+    }
+    a-scene { width:100vw; height:100vh; }
+  </style>
+</head>
+<body>
+  <div id="status">Toque em “Iniciar” para habilitar o som…</div>
 
-  <body>
-    <button id="iniciarBtn">Iniciar</button>
-    <div id="status">[STATUS] Carregando...</div>
+  <!-- Tela inicial para gesto do usuário (desbloqueia áudio) -->
+  <div id="gate">
+    <h2 style="margin:0">🎄 Cartão AR</h2>
+    <p style="opacity:.8; margin:0 16px; text-align:center">Toque para habilitar o som e iniciar a câmera</p>
+    <button id="btnStart">Iniciar</button>
+  </div>
 
-    <!-- ✅ Cena AR -->
-    <a-scene
-      mindar-image="imageTargetSrc: ./mindar/ingrid.mind; filterMinCF:0.0001; filterBeta: 0.001;"
-      color-space="sRGB"
-      renderer="colorManagement: true, physicallyCorrectLights"
-      vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: false"
-    >
-      <a-assets>
-        <video
-          id="videoCliente"
-          preload="auto"
-          loop
-          crossorigin="anonymous"
-          webkit-playsinline
-          playsinline
-          muted
-        ></video>
-      </a-assets>
+  <!-- Cena SEM mindar-image inicialmente (vamos setar dinamicamente) -->
+  <a-scene id="scene"
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
 
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <a-assets id="assets"></a-assets>
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- Alvo de imagem (target MindAR) -->
-      <a-entity mindar-image-target="targetIndex: 0" id="targetIngrid">
-        <a-video
-          src="#videoCliente"
-          position="0 0 0"
-          rotation="0 0 0"
-          width="1"
-          height="0.80"
-          autoplay="false"
-          id="videoPlane"
-        ></a-video>
-      </a-entity>
-    </a-scene>
+    <!-- O entity do target será criado dinamicamente -->
+  </a-scene>
 
-    <!-- ✅ Firebase (módulo) -->
-    <script type="module">
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
-      import {
-        getFirestore,
-        collection,
-        query,
-        where,
-        getDocs,
-      } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
+  <!-- Firebase (expondo função global) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
+    import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
 
-      const firebaseConfig = {
-        apiKey: "AIzaSyAQaVmj1MBbIoOCod-vRZvG1Z4DGxo3ZO4",
-        authDomain: "cartao-ar-clientes.firebaseapp.com",
-        projectId: "cartao-ar-clientes",
-      };
+    const firebaseConfig = {
+      apiKey: "AIzaSyAQaVmj1MBbIoOCod-vRZvG1Z4DGxo3ZO4",
+      authDomain: "cartao-ar-clientes.firebaseapp.com",
+      projectId: "cartao-ar-clientes",
+    };
 
-      const app = initializeApp(firebaseConfig);
-      const db = getFirestore(app);
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
 
-      // 🔹 Cria função global visível fora do módulo
-      window.buscarVideoCliente = async function (nomeClienteFirestore) {
-        const q = query(
-          collection(db, "clientes"),
-          where("nome", "==", nomeClienteFirestore)
-        );
-        const snapshot = await getDocs(q);
-        if (snapshot.empty)
-          throw new Error(`Cliente '${nomeClienteFirestore}' não encontrado.`);
-        return snapshot.docs[0].data(); // { videourl: "..." }
-      };
+    window.buscarVideoCliente = async function(nomeCliente) {
+      const q = query(collection(db, "clientes"), where("nome", "==", nomeCliente));
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) throw new Error(`Cliente '${nomeCliente}' não encontrado no Firestore`);
+      return snapshot.docs[0].data(); // campo 'videourl'
+    };
+  </script>
 
-      // 🔹 Marca quando estiver pronto
-      window.firebaseReady = true;
-    </script>
+  <!-- Lógica principal -->
+  <script>
+    const statusEl = document.getElementById('status');
+    const sceneEl  = document.getElementById('scene');
+    const assetsEl = document.getElementById('assets');
+    const gateEl   = document.getElementById('gate');
+    const btnStart = document.getElementById('btnStart');
 
-    <!-- ✅ Script principal -->
-    <script>
-      const statusDiv = document.getElementById("status");
-      const iniciarBtn = document.getElementById("iniciarBtn");
-      const video = document.getElementById("videoCliente");
-      const target = document.getElementById("targetIngrid");
+    function setStatus(msg){ statusEl.textContent = msg; console.log('[STATUS]', msg); }
 
-      function setStatus(msg) {
-        console.log("[STATUS]", msg);
-        statusDiv.textContent = `[STATUS] ${msg}`;
-      }
+    // === 1) Descobre o cliente pela URL e define o arquivo .mind correspondente ===
+    const params = new URLSearchParams(location.search);
+    const clienteParam = (params.get('cliente') || '').trim();
+    // Mapeie aqui seus nomes -> arquivos .mind
+    const mindMap = {
+      'INGRID': 'ingrid.mind',
+      'LAURA' : 'laura.mind'
+    };
+    const nomeCliente = clienteParam.toUpperCase();
+    const mindFile = mindMap[nomeCliente];
 
-      // ✅ Função principal
-      async function startForClient(nomeCliente) {
-        try {
-          setStatus(`Buscando vídeo do cliente: ${nomeCliente}...`);
-          const data = await window.buscarVideoCliente(nomeCliente);
-          if (!data?.videourl)
-            throw new Error("Campo 'videourl' ausente no Firestore.");
+    if (!mindFile) {
+      setStatus('Informe ?cliente=Ingrid ou ?cliente=Laura na URL.');
+    }
 
-          video.src = data.videourl;
-          setStatus(`Cliente: ${nomeCliente}. Toque em Iniciar e aponte para a imagem.`);
-        } catch (err) {
-          console.error(err);
-          setStatus("Erro Firestore: " + err.message);
+    // === 2) Desbloqueia áudio no primeiro toque ===
+    window.soundUnlocked = false;
+    btnStart.addEventListener('click', async () => {
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+          if (!window._audioCtx) window._audioCtx = new AC();
+          if (window._audioCtx.state !== 'running') await window._audioCtx.resume();
         }
+        window.soundUnlocked = true;
+        gateEl.style.display = 'none';
+        setStatus('Som habilitado. Aponte para a imagem para iniciar o vídeo.');
+      } catch (e) {
+        console.warn('Falha ao desbloquear áudio:', e);
+        setStatus('Não consegui habilitar o áudio. Tente novamente.');
       }
+    });
 
-      // ✅ Inicialização com parâmetro da URL
-      async function boot() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const cliente = urlParams.get("cliente");
-        if (!cliente) {
-          setStatus("Selecione um cliente para continuar.");
-          return;
-        }
-        await startForClient(cliente);
+    // === 3) Componente que cria o vídeo e o plano ajustado ===
+    AFRAME.registerComponent('cliente-ar', {
+      schema: { nomeCliente:{type:'string'}, videoId:{type:'string'} },
+
+      init: function () {
+        const { nomeCliente, videoId } = this.data;
+        const targetEl = this.el;
+
+        setStatus(`Buscando vídeo de ${nomeCliente}…`);
+        window.buscarVideoCliente(nomeCliente)
+          .then(dados => {
+            const url = dados.videourl;
+            console.log(`🎬 URL de ${nomeCliente}:`, url);
+            if (!url) { setStatus(`Erro: 'videourl' do cliente ${nomeCliente} está vazio.`); return; }
+
+            const v = document.createElement('video');
+            v.id = videoId;
+            v.src = url;
+            v.preload = 'auto';
+            v.muted = !window.soundUnlocked; // som liga após clique
+            v.setAttribute('playsinline','');
+            v.setAttribute('webkit-playsinline','');
+            v.loop = true;
+            v.crossOrigin = 'anonymous';
+            assetsEl.appendChild(v);
+
+            v.addEventListener('loadedmetadata', () => {
+              this.adicionarVideoPlane(v);
+              setStatus(`Vídeo de ${nomeCliente} carregado. Aponte a câmera.`);
+            });
+
+            targetEl.addEventListener('targetFound', async () => {
+              console.log(`🎯 ${nomeCliente} rastreado`);
+              if (window.soundUnlocked) v.muted = false;
+              try { await v.play(); } catch (err) { console.error('Play falhou:', err); }
+            });
+
+            targetEl.addEventListener('targetLost', () => {
+              console.log(`❌ ${nomeCliente} perdido`);
+              v.pause();
+            });
+
+            v.load();
+          })
+          .catch(err => {
+            console.error(`Erro ao buscar ${nomeCliente}:`, err);
+            setStatus(`Erro ao carregar ${nomeCliente}: ${err.message}`);
+          });
+      },
+
+      adicionarVideoPlane: function (videoEl) {
+        const { videoId, nomeCliente } = this.data;
+        const plane = document.createElement('a-plane');
+
+        plane.setAttribute('src', `#${videoId}`);
+        plane.setAttribute('crossorigin', 'anonymous');
+        plane.setAttribute('material', 'shader: flat; transparent: true; opacity: 1;');
+        plane.setAttribute('position', '0 0 0.05');
+
+        const aspect = videoEl.videoWidth / videoEl.videoHeight;
+        const baseHeight = 1.0;
+        const baseWidth  = baseHeight * aspect;
+
+        plane.setAttribute('height', baseHeight.toString());
+        plane.setAttribute('width',  baseWidth.toString());
+        this.el.appendChild(plane);
+        console.log(`✅ Plano de vídeo para ${nomeCliente} adicionado (aspect=${aspect.toFixed(3)})`);
       }
+    });
 
-      // ✅ Espera o Firebase estar pronto antes de iniciar
-      (async function waitFirebase() {
-        while (!window.firebaseReady) {
-          await new Promise((r) => setTimeout(r, 50));
-        }
-        boot();
-      })();
+    // === 4) Monta a cena só para o cliente escolhido (economia de egress) ===
+    (function montarCenaParaUmCliente(){
+      if (!mindFile) return; // já mostramos status pedindo ?cliente=
+      // Seta o .mind correto
+      sceneEl.setAttribute('mindar-image', `imageTargetSrc: ./mindar/${mindFile}; filterMinCF: 0.1; filterBeta: 10`);
 
-      // ✅ Botão "Iniciar" habilita som e vídeo
-      iniciarBtn.addEventListener("click", async () => {
-        try {
-          video.muted = false;
-          await video.play();
-          setStatus("Som habilitado. Aponte a câmera para a imagem.");
-          iniciarBtn.style.display = "none";
-        } catch (e) {
-          console.warn("Falha ao iniciar vídeo:", e);
-          setStatus("Toque novamente para liberar o vídeo.");
-        }
-      });
-
-      // ✅ Controle via MindAR: play/pause quando o marcador aparece/desaparece
-      target.addEventListener("targetFound", () => {
-        console.log("[MindAR] Marcador detectado.");
-        if (!video.paused) return;
-        video.play()
-          .then(() => setStatus("🎬 Vídeo tocando"))
-          .catch((e) => console.warn("Autoplay bloqueado:", e));
-      });
-
-      target.addEventListener("targetLost", () => {
-        console.log("[MindAR] Marcador perdido.");
-        video.pause();
-        setStatus("⏸️ Marcador perdido. Vídeo pausado.");
-      });
-    </script>
-  </body>
+      // Cria o único target (index 0) com o componente do cliente
+      const entity = document.createElement('a-entity');
+      entity.setAttribute('mindar-image-target', 'targetIndex: 0');
+      entity.setAttribute('cliente-ar', `nomeCliente: ${clienteParam}; videoId: videoDoCliente`);
+      sceneEl.appendChild(entity);
+    })();
+  </script>
+</body>
 </html>
+
