@@ -73,14 +73,15 @@
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
       <!-- Alvo de imagem (target MindAR) -->
-      <a-entity mindar-image-target="targetIndex: 0">
+      <a-entity mindar-image-target="targetIndex: 0" id="targetIngrid">
         <a-video
           src="#videoCliente"
           position="0 0 0"
           rotation="0 0 0"
           width="1"
-          height="0.56"
+          height="0.80"
           autoplay="false"
+          id="videoPlane"
         ></a-video>
       </a-entity>
     </a-scene>
@@ -126,6 +127,7 @@
       const statusDiv = document.getElementById("status");
       const iniciarBtn = document.getElementById("iniciarBtn");
       const video = document.getElementById("videoCliente");
+      const target = document.getElementById("targetIngrid");
 
       function setStatus(msg) {
         console.log("[STATUS]", msg);
@@ -168,12 +170,31 @@
       })();
 
       // ✅ Botão "Iniciar" habilita som e vídeo
-      iniciarBtn.addEventListener("click", () => {
-        video.muted = false;
-        video.play().then(() => {
+      iniciarBtn.addEventListener("click", async () => {
+        try {
+          video.muted = false;
+          await video.play();
           setStatus("Som habilitado. Aponte a câmera para a imagem.");
           iniciarBtn.style.display = "none";
-        });
+        } catch (e) {
+          console.warn("Falha ao iniciar vídeo:", e);
+          setStatus("Toque novamente para liberar o vídeo.");
+        }
+      });
+
+      // ✅ Controle via MindAR: play/pause quando o marcador aparece/desaparece
+      target.addEventListener("targetFound", () => {
+        console.log("[MindAR] Marcador detectado.");
+        if (!video.paused) return;
+        video.play()
+          .then(() => setStatus("🎬 Vídeo tocando"))
+          .catch((e) => console.warn("Autoplay bloqueado:", e));
+      });
+
+      target.addEventListener("targetLost", () => {
+        console.log("[MindAR] Marcador perdido.");
+        video.pause();
+        setStatus("⏸️ Marcador perdido. Vídeo pausado.");
       });
     </script>
   </body>
