@@ -2,44 +2,70 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cartão AR Cliente - MindAR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cartão AR (banda mínima • .mind por cliente • único HTML)</title>
 
-  <!-- A-Frame e MindAR -->
+  <!-- Corrige warning 404 local do favicon -->
+  <link rel="icon" href="data:,">
+
+  <!-- A-Frame + MindAR -->
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
-    body { margin:0; overflow:hidden; font-family:system-ui,sans-serif; background:#000; color:#fff; }
+    :root { color-scheme: dark; }
+    body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:system-ui,sans-serif; }
     #status {
-      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.7); padding: 8px 16px; border-radius: 8px; font-size: 14px; z-index: 10;
+      position:absolute; top:10px; left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,.7); padding:8px 14px; border-radius:10px; z-index:20; font-size:14px;
+      max-width:92vw; text-align:center; line-height:1.35;
     }
-    a-scene { width: 100vw; height: 100vh; }
+    #gate, #picker {
+      position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:12px; background:#000; color:#fff; z-index:30;
+    }
+    #gate button, #picker button, #picker select {
+      padding:12px 18px; border:0; border-radius:10px; background:#22c55e; color:#fff; font-weight:700; cursor:pointer;
+    }
+    #picker select { background:#111; border:1px solid #333; color:#fff; cursor:pointer; }
+    a-scene { width:100vw; height:100vh; }
   </style>
 </head>
 <body>
-  <div id="status">Aponte a câmera para a imagem...</div>
+  <div id="status">Escolha o cliente ou use ?cliente=Nome na URL …</div>
+
+  <!-- Seletor quando não vier ?cliente= -->
+  <div id="picker" style="display:none">
+    <h2 style="margin:0">Selecionar cliente</h2>
+    <p style="opacity:.85;margin:0">Você também pode abrir com <code>?cliente=Ingrid</code></p>
+    <div style="display:flex; gap:8px; align-items:center">
+      <select id="clientSelect"></select>
+      <button id="btnPick">OK</button>
+    </div>
+  </div>
+
+  <!-- Gesto para habilitar áudio -->
+  <div id="gate" style="display:none">
+    <h2 style="margin:0">🎄 Cartão AR</h2>
+    <p style="opacity:.85;margin:0 16px;text-align:center">Toque para habilitar o som e iniciar a câmera</p>
+    <button id="btnStart">Iniciar</button>
+  </div>
 
   <a-scene
-    mindar-image="imageTargetSrc: #targets; filterMinCF: 0.1; filterBeta: 10"
+    id="scene"
+    mindar-image="imageTargetSrc: ; filterMinCF: 0.1; filterBeta: 10"
     renderer="colorManagement: true; physicallyCorrectLights: true"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
+    vr-mode-ui="enabled:false"
+    device-orientation-permission-ui="enabled:false">
 
-    <a-assets id="assets">
-      <!-- .mind carregado explicitamente como binário -->
-      <a-asset-item id="targets" src="./mindar/papainoel.mind" response-type="arraybuffer"></a-asset-item>
-    </a-assets>
+    <a-assets id="assets"></a-assets>
+    <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-    <!-- Cada alvo cria seu próprio vídeo/plane dinamicamente -->
-    <a-entity mindar-image-target="targetIndex: 0" cliente-ar="nomeCliente: Ingrid; videoId: videoIngrid"></a-entity>
-    <a-entity mindar-image-target="targetIndex: 1" cliente-ar="nomeCliente: Laura;  videoId: videoLaura"></a-entity>
+    <!-- 1 alvo (sempre index 0) pois cada .mind terá um único target -->
+    <a-entity mindar-image-target="targetIndex: 0" cliente-ar></a-entity>
   </a-scene>
 
-  <!-- Firebase (expondo função no window) -->
+  <!-- Firebase (busca videourl no Firestore) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
     import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
@@ -49,100 +75,261 @@
       authDomain: "cartao-ar-clientes.firebaseapp.com",
       projectId: "cartao-ar-clientes",
     };
-
     const app = initializeApp(firebaseConfig);
     const db  = getFirestore(app);
 
-    window.buscarVideoCliente = async function(nomeCliente) {
-      const q = query(collection(db, "clientes"), where("nome", "==", nomeCliente));
+    // expõe para o script não-module
+    window.buscarVideoCliente = async function(nomeClienteFirestore) {
+      const q = query(collection(db, "clientes"), where("nome", "==", nomeClienteFirestore));
       const snapshot = await getDocs(q);
-      if (snapshot.empty) throw new Error("Cliente não encontrado!");
-      return snapshot.docs[0].data(); // deve conter 'videourl'
+      if (snapshot.empty) throw new Error(`Cliente '${nomeClienteFirestore}' não encontrado no Firestore`);
+      return snapshot.docs[0].data(); // precisa conter 'videourl'
     };
   </script>
 
-  <!-- Componente A-Frame -->
-  <script type="module">
-    window.addEventListener('load', () => {
-      const statusEl = document.getElementById("status");
-      const assetsEl = document.getElementById("assets");
+  <script>
+    // ===== CONFIG POR CLIENTE =====
+    // key = valor esperado em ?cliente= (case-sensitive)
+    // mind = caminho do .mind desse cliente
+    // firestore = valor EXATO do campo "nome" no Firestore
+    const CLIENTS = {
+      Ingrid: { mind: "./mindar/ingrid.mind", firestore: "Ingrid" },
+      Laura:  { mind: "./mindar/laura.mind",  firestore: "Laura"  },
+    };
 
-      AFRAME.registerComponent('cliente-ar', {
-        schema: {
-          nomeCliente: { type: 'string' },
-          videoId:     { type: 'string' }
-        },
+    // ===== ELEMENTOS =====
+    const statusEl = document.getElementById('status');
+    const sceneEl  = document.getElementById('scene');
+    const assetsEl = document.getElementById('assets');
+    const gateEl   = document.getElementById('gate');
+    const btnStart = document.getElementById('btnStart');
+    const pickerEl = document.getElementById('picker');
+    const clientSelect = document.getElementById('clientSelect');
+    const btnPick  = document.getElementById('btnPick');
 
-        init: function () {
-          const { nomeCliente, videoId } = this.data;
-          const targetEl = this.el;
+    function setStatus(msg){ statusEl.textContent = msg; console.log('[STATUS]', msg); }
+    function getParam(name){ const u = new URL(location.href); return u.searchParams.get(name); }
+    function updateUrlParam(key, val){ const u = new URL(location.href); u.searchParams.set(key,val); return u.toString(); }
 
-          statusEl.textContent = `Carregando vídeo de ${nomeCliente}...`;
-
-          window.buscarVideoCliente(nomeCliente)
-            .then((dados) => {
-              const urlVideo = dados.videourl;
-              console.log(`🎬 URL do vídeo de ${nomeCliente}:`, urlVideo);
-
-              if (!urlVideo) {
-                statusEl.textContent = `Erro: 'videourl' de ${nomeCliente} não definido no Firestore.`;
-                return;
-              }
-
-              // 1) Cria <video> dinamicamente dentro de <a-assets>
-              const v = document.createElement('video');
-              v.id = videoId;
-              v.src = urlVideo;
-              v.setAttribute('preload','auto');
-              v.setAttribute('muted','');                 // autoplay mobile
-              v.setAttribute('playsinline','');
-              v.setAttribute('webkit-playsinline','');
-              v.setAttribute('loop','');
-              v.setAttribute('crossorigin','anonymous');   // CORS Firebase
-              assetsEl.appendChild(v);
-              v.load();
-
-              // 2) Quando houver dados, cria o plano apontando para #videoId
-              v.addEventListener('loadeddata', () => {
-                this.adicionarVideoPlane(`#${videoId}`);
-                statusEl.textContent = "Pronto. Aponte a câmera para a imagem.";
-              });
-
-              // 3) Controle play/pause conforme tracking
-              targetEl.addEventListener('targetFound', () => {
-                console.log(`🎯 Imagem de ${nomeCliente} rastreada!`);
-                v.play().catch(e => console.error("Erro ao tocar vídeo:", e));
-              });
-
-              targetEl.addEventListener('targetLost', () => {
-                console.log(`❌ Imagem de ${nomeCliente} perdida.`);
-                v.pause();
-              });
-            })
-            .catch((err) => {
-              console.error(`Erro ao buscar ${nomeCliente} no Firebase:`, err);
-              statusEl.textContent = `Erro ao carregar cliente: ${err.message}`;
-            });
-        },
-
-        adicionarVideoPlane: function (srcSelector) {
-          const { nomeCliente } = this.data;
-          const plane = document.createElement('a-plane');
-
-          plane.setAttribute('src', srcSelector);              // usa #videoId
-          plane.setAttribute('crossorigin', 'anonymous');      // por segurança
-          plane.setAttribute('width',  '1.777');
-          plane.setAttribute('height', '1.0');
-          plane.setAttribute('position', '0 0 0.05');
-          plane.setAttribute('rotation', '0 0 0');
-          plane.setAttribute('material', 'shader: flat; transparent: true; opacity: 1;');
-
-          this.el.appendChild(plane);
-          console.log(`✅ Plano de vídeo para ${nomeCliente} adicionado.`);
-        }
+    function fillClientSelector() {
+      clientSelect.innerHTML = "";
+      Object.keys(CLIENTS).forEach(k => {
+        const opt = document.createElement('option');
+        opt.value = k; opt.textContent = k; clientSelect.appendChild(opt);
       });
+    }
+
+    // Liberação de áudio por gesto
+    window.soundUnlocked = false;
+    btnStart.addEventListener('click', async () => {
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+          if (!window._audioCtx) window._audioCtx = new AC();
+          if (window._audioCtx.state !== 'running') await window._audioCtx.resume();
+        }
+        window.soundUnlocked = true;
+        gateEl.style.display = 'none';
+        setStatus('Som habilitado. Aponte a câmera para a imagem.');
+      } catch (e) {
+        console.warn('Falha ao desbloquear áudio:', e);
+        setStatus('Não consegui habilitar o áudio. Toque novamente em Iniciar.');
+      }
     });
+
+    // garante no máximo 1 fluxo de vídeo ativo
+    window.__activeVideos = new Set();
+    function pauseAllOthers(except) {
+      for (const v of window.__activeVideos) if (v !== except) { try { v.pause(); } catch(_) {} }
+    }
+
+    // ===== Componente: lazy-load agressivo do vídeo =====
+    AFRAME.registerComponent('cliente-ar', {
+      schema: {
+        nomeCliente: { type: 'string', default: '' },
+        videoId:     { type: 'string', default: 'videoCliente' },
+        videoUrl:    { type: 'string', default: '' } // preenchido antes do .mind iniciar
+      },
+
+      init: function () {
+        this.videoEl     = null;
+        this.planeEl     = null;
+        this.isTracking  = false;
+        this.createdOnce = false;
+      },
+
+      update: function () {
+        // nada obrigatório aqui; usamos os valores na hora do targetFound
+      },
+
+      remove() {
+        this.el.removeEventListener('targetFound', this._onFound);
+        this.el.removeEventListener('targetLost',  this._onLost);
+      },
+
+      play() {
+        this._onFound = this.__onFound.bind(this);
+        this._onLost  = this.__onLost.bind(this);
+        this.el.addEventListener('targetFound', this._onFound);
+        this.el.addEventListener('targetLost',  this._onLost);
+      },
+
+      pause() {
+        this.el.removeEventListener('targetFound', this._onFound);
+        this.el.removeEventListener('targetLost',  this._onLost);
+      },
+
+      async __onFound() {
+        this.isTracking = true;
+
+        // Cria DOM (sem baixar nada) na primeira vez
+        if (!this.createdOnce) {
+          await this._createVideoAndPlane();
+          this.createdOnce = true;
+        }
+
+        // Garante que temos URL; se não veio no atributo, busca agora
+        if (!this.data.videoUrl) {
+          try {
+            const d = await window.buscarVideoCliente(this.data.nomeCliente);
+            this.data.videoUrl = d?.videourl || '';
+          } catch (e) {
+            console.error(e); setStatus(`Erro Firestore: ${e.message}`);
+            return;
+          }
+          if (!this.data.videoUrl) return;
+        }
+
+        // Conecta a fonte apenas agora (evita download antecipado)
+        if (this.videoEl && !this.videoEl.src) {
+          this.videoEl.src = this.data.videoUrl;
+          this.videoEl.load();
+        }
+
+        pauseAllOthers(this.videoEl);
+        if (window.soundUnlocked) this.videoEl.muted = false;
+
+        try { await this.videoEl.play(); } catch(e) { console.warn('Play falhou:', e); }
+        if (this.planeEl) this.planeEl.setAttribute('visible', true);
+      },
+
+      __onLost() {
+        this.isTracking = false;
+        if (this.videoEl) {
+          this.videoEl.pause();
+
+          // ECONOMIA MÁXIMA DE BANDA: remove src e cancela buffers
+          this.videoEl.removeAttribute('src');
+          this.videoEl.load();
+
+          if (!window.soundUnlocked) this.videoEl.muted = true;
+        }
+        if (this.planeEl) this.planeEl.setAttribute('visible', false);
+      },
+
+      _createVideoAndPlane() {
+        return new Promise((resolve) => {
+          const { videoId } = this.data;
+
+          const v = document.createElement('video');
+          v.id = videoId;
+          v.preload = 'none';                 // chave para banda mínima
+          v.muted   = !window.soundUnlocked;
+          v.setAttribute('playsinline','');
+          v.setAttribute('webkit-playsinline','');
+          v.loop = true;
+          v.crossOrigin = 'anonymous';
+
+          v.addEventListener('error', (e) => {
+            console.error('Erro <video>:', e);
+            setStatus('Erro ao carregar o vídeo.');
+          });
+
+          v.addEventListener('loadedmetadata', () => {
+            if (!this.planeEl) {
+              const plane = document.createElement('a-plane');
+              plane.setAttribute('src', `#${videoId}`);
+              plane.setAttribute('crossorigin', 'anonymous');
+              plane.setAttribute('material', 'shader: flat; transparent: true; opacity: 1;');
+              plane.setAttribute('position', '0 0 0.05');
+
+              // proporção correta
+              const aspect = v.videoWidth / v.videoHeight;
+              const h = 2.0, w = h * aspect;
+              plane.setAttribute('height', String(h));
+              plane.setAttribute('width',  String(w));
+              plane.setAttribute('visible', false);
+
+              this.el.appendChild(plane);
+              this.planeEl = plane;
+            }
+          });
+
+          assetsEl.appendChild(v);
+          this.videoEl = v;
+          window.__activeVideos.add(v);
+          resolve();
+        });
+      }
+    });
+
+    // ===== Fluxo principal =====
+    (function boot() {
+      const clienteParam = getParam("cliente");
+      if (clienteParam && CLIENTS[clienteParam]) {
+        startForClient(clienteParam);
+      } else {
+        fillClientSelector();
+        pickerEl.style.display = 'flex';
+        setStatus('Selecione um cliente para continuar.');
+        btnPick.onclick = () => {
+          const c = clientSelect.value;
+          pickerEl.style.display = 'none';
+          history.replaceState({}, "", updateUrlParam("cliente", c)); // opcional: grava na URL
+          startForClient(c);
+        };
+      }
+    })();
+
+    // Define cliente, resolve videourl e só então aplica o .mind
+    async function startForClient(clienteKey) {
+      const entry = CLIENTS[clienteKey];
+      if (!entry) { setStatus(`Cliente inválido: ${clienteKey}`); return; }
+
+      // 1) Define atributos do componente (nome + videoId) ainda sem URL
+      const alvo = document.querySelector('[cliente-ar]');
+      alvo.setAttribute('cliente-ar', {
+        nomeCliente: entry.firestore,
+        videoId: 'videoCliente',
+        videoUrl: '' // vamos preencher abaixo
+      });
+
+      // 2) Busca videourl ANTES de ligar o .mind (evita corrida)
+      try {
+        const d = await window.buscarVideoCliente(entry.firestore);
+        const url = d?.videourl || '';
+        if (!url) {
+          setStatus(`'videourl' vazio para ${entry.firestore}.`);
+        } else {
+          alvo.setAttribute('cliente-ar', {
+            nomeCliente: entry.firestore,
+            videoId: 'videoCliente',
+            videoUrl: url
+          });
+        }
+      } catch (e) {
+        console.error(e);
+        setStatus(`Erro Firestore: ${e.message}`);
+      }
+
+      // 3) Agora aplicamos o .mind com cache-buster
+      const mindAttr = `imageTargetSrc: ${entry.mind}?v=${Date.now()}; filterMinCF: 0.1; filterBeta: 10`;
+      sceneEl.setAttribute('mindar-image', mindAttr);
+
+      // 4) Mostra overlay do gesto/áudio
+      gateEl.style.display = 'flex';
+      setStatus(`Cliente: ${clienteKey}. Toque em Iniciar e aponte para a imagem.`);
+    }
   </script>
 </body>
 </html>
-
