@@ -1,234 +1,180 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Cartão AR • Clientes</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cartão AR - Clientes</title>
 
-  <!-- Corrige warning 404 local do favicon -->
-  <link rel="icon" href="data:,">
+    <!-- ✅ A-Frame + MindAR -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
-  <!-- A-Frame + MindAR -->
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-
-  <style>
-    :root { color-scheme: dark; }
-    body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:system-ui,sans-serif; }
-    #status {
-      position:absolute; top:10px; left:50%; transform:translateX(-50%);
-      background:rgba(0,0,0,.7); padding:8px 14px; border-radius:10px; z-index:20; font-size:14px;
-      max-width:92vw; text-align:center; line-height:1.35;
-    }
-    #gate, #picker {
-      position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-      gap:12px; background:#000; color:#fff; z-index:30;
-    }
-    #gate button, #picker button, #picker select {
-      padding:12px 18px; border:0; border-radius:10px; background:#22c55e; color:#fff; font-weight:700; cursor:pointer;
-    }
-    #picker select { background:#111; border:1px solid #333; color:#fff; cursor:pointer; }
-    a-scene { width:100vw; height:100vh; }
-  </style>
-</head>
-
-<body>
-  <div id="status">Escolha o cliente ou use ?cliente=Nome na URL …</div>
-
-  <!-- Seletor quando não vier ?cliente= -->
-  <div id="picker" style="display:none">
-    <h2 style="margin:0">Selecionar cliente</h2>
-    <p style="opacity:.85;margin:0">Você também pode abrir com <code>?cliente=Ingrid</code></p>
-    <div style="display:flex; gap:8px; align-items:center">
-      <select id="clientSelect"></select>
-      <button id="btnPick">OK</button>
-    </div>
-  </div>
-
-  <!-- Gesto para habilitar áudio -->
-  <div id="gate" style="display:none">
-    <h2 style="margin:0">🎄 Cartão AR</h2>
-    <p style="opacity:.85;margin:0 16px;text-align:center">Toque para habilitar o som e iniciar a câmera</p>
-    <button id="btnStart">Iniciar</button>
-  </div>
-
-  <!-- Cena AR -->
-  <a-scene
-    id="scene"
-    mindar-image="imageTargetSrc: ; filterMinCF: 0.1; filterBeta: 10"
-    renderer="colorManagement: true; physicallyCorrectLights: true"
-    vr-mode-ui="enabled:false"
-    device-orientation-permission-ui="enabled:false">
-
-    <a-assets id="assets"></a-assets>
-    <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
-
-    <!-- 1 alvo (sempre index 0) -->
-    <a-entity mindar-image-target="targetIndex: 0" cliente-ar></a-entity>
-  </a-scene>
-
-
-  <!-- ============================= -->
-  <!-- 🔹 Firebase (modular)         -->
-  <!-- ============================= -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
-    import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyAQaVmj1MBbIoOCod-vRZvG1Z4DGxo3ZO4",
-      authDomain: "cartao-ar-clientes.firebaseapp.com",
-      projectId: "cartao-ar-clientes",
-    };
-    const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
-
-    // 🔸 Torna global (funciona em GoLive e GitHub Pages)
-    globalThis.buscarVideoCliente = async function(nomeClienteFirestore) {
-      const q = query(collection(db, "clientes"), where("nome", "==", nomeClienteFirestore));
-      const snapshot = await getDocs(q);
-      if (snapshot.empty) throw new Error(`Cliente '${nomeClienteFirestore}' não encontrado no Firestore`);
-      return snapshot.docs[0].data(); // deve conter 'videourl'
-    };
-  </script>
-
-
-  <!-- ============================= -->
-  <!-- 🔹 Script principal (não módulo) -->
-  <!-- ============================= -->
-  <script>
-    const CLIENTS = {
-      Ingrid: { mind: "./mindar/ingrid.mind", firestore: "Ingrid" },
-      Laura:  { mind: "./mindar/laura.mind",  firestore: "Laura"  },
-    };
-
-    const statusEl = document.getElementById('status');
-    const sceneEl  = document.getElementById('scene');
-    const assetsEl = document.getElementById('assets');
-    const gateEl   = document.getElementById('gate');
-    const btnStart = document.getElementById('btnStart');
-    const pickerEl = document.getElementById('picker');
-    const clientSelect = document.getElementById('clientSelect');
-    const btnPick  = document.getElementById('btnPick');
-
-    function setStatus(msg){ statusEl.textContent = msg; console.log('[STATUS]', msg); }
-    function getParam(name){ const u = new URL(location.href); return u.searchParams.get(name); }
-    function updateUrlParam(key, val){ const u = new URL(location.href); u.searchParams.set(key,val); return u.toString(); }
-
-    function fillClientSelector() {
-      clientSelect.innerHTML = "";
-      Object.keys(CLIENTS).forEach(k => {
-        const opt = document.createElement('option');
-        opt.value = k; opt.textContent = k; clientSelect.appendChild(opt);
-      });
-    }
-
-    // Liberação de áudio por gesto
-    window.soundUnlocked = false;
-    btnStart.addEventListener('click', async () => {
-      try {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (AC) {
-          if (!window._audioCtx) window._audioCtx = new AC();
-          if (window._audioCtx.state !== 'running') await window._audioCtx.resume();
-        }
-        window.soundUnlocked = true;
-        gateEl.style.display = 'none';
-        setStatus('Som habilitado. Aponte a câmera para a imagem.');
-      } catch (e) {
-        console.warn('Falha ao desbloquear áudio:', e);
-        setStatus('Não consegui habilitar o áudio. Toque novamente em Iniciar.');
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        font-family: Arial, sans-serif;
       }
-    });
+      #status {
+        position: fixed;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.6);
+        color: #00ffcc;
+        padding: 8px 16px;
+        border-radius: 10px;
+        font-size: 14px;
+      }
+      #iniciarBtn {
+        position: fixed;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #00ffcc;
+        color: #000;
+        font-weight: bold;
+        border: none;
+        border-radius: 10px;
+        padding: 10px 20px;
+        cursor: pointer;
+      }
+      #iniciarBtn:hover {
+        background: #00ccaa;
+      }
+    </style>
+  </head>
 
-    window.__activeVideos = new Set();
-    function pauseAllOthers(except) {
-      for (const v of window.__activeVideos) if (v !== except) { try { v.pause(); } catch(_) {} }
-    }
+  <body>
+    <button id="iniciarBtn">Iniciar</button>
+    <div id="status">[STATUS] Carregando...</div>
 
-    // ===== Componente de vídeo AR =====
-    AFRAME.registerComponent('cliente-ar', {
-      schema: { nomeCliente: {type:'string'}, videoId: {type:'string'}, videoUrl: {type:'string'} },
-      init() { this.videoEl=null; this.planeEl=null; this.createdOnce=false; },
-      remove() { this.el.removeEventListener('targetFound', this._onFound); this.el.removeEventListener('targetLost', this._onLost); },
-      play() {
-        this._onFound=this.__onFound.bind(this); this._onLost=this.__onLost.bind(this);
-        this.el.addEventListener('targetFound', this._onFound);
-        this.el.addEventListener('targetLost',  this._onLost);
-      },
-      async __onFound() {
-        if (!this.createdOnce) { await this._createVideoAndPlane(); this.createdOnce=true; }
+    <!-- ✅ Cena AR -->
+    <a-scene
+      mindar-image="imageTargetSrc: ./mindar/ingrid.mind; filterMinCF:0.0001; filterBeta: 0.001;"
+      color-space="sRGB"
+      renderer="colorManagement: true, physicallyCorrectLights"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false"
+    >
+      <a-assets>
+        <video
+          id="videoCliente"
+          preload="auto"
+          loop
+          crossorigin="anonymous"
+          webkit-playsinline
+          playsinline
+          muted
+        ></video>
+      </a-assets>
 
-        if (!this.data.videoUrl) {
-          try { const d = await globalThis.buscarVideoCliente(this.data.nomeCliente); this.data.videoUrl = d?.videourl || ''; }
-          catch (e) { console.error(e); setStatus(`Erro Firestore: ${e.message}`); return; }
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <!-- Alvo de imagem (target MindAR) -->
+      <a-entity mindar-image-target="targetIndex: 0">
+        <a-video
+          src="#videoCliente"
+          position="0 0 0"
+          rotation="0 0 0"
+          width="1"
+          height="0.56"
+          autoplay="false"
+        ></a-video>
+      </a-entity>
+    </a-scene>
+
+    <!-- ✅ Firebase (módulo) -->
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
+      import {
+        getFirestore,
+        collection,
+        query,
+        where,
+        getDocs,
+      } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyAQaVmj1MBbIoOCod-vRZvG1Z4DGxo3ZO4",
+        authDomain: "cartao-ar-clientes.firebaseapp.com",
+        projectId: "cartao-ar-clientes",
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+
+      // 🔹 Cria função global visível fora do módulo
+      window.buscarVideoCliente = async function (nomeClienteFirestore) {
+        const q = query(
+          collection(db, "clientes"),
+          where("nome", "==", nomeClienteFirestore)
+        );
+        const snapshot = await getDocs(q);
+        if (snapshot.empty)
+          throw new Error(`Cliente '${nomeClienteFirestore}' não encontrado.`);
+        return snapshot.docs[0].data(); // { videourl: "..." }
+      };
+
+      // 🔹 Marca quando estiver pronto
+      window.firebaseReady = true;
+    </script>
+
+    <!-- ✅ Script principal -->
+    <script>
+      const statusDiv = document.getElementById("status");
+      const iniciarBtn = document.getElementById("iniciarBtn");
+      const video = document.getElementById("videoCliente");
+
+      function setStatus(msg) {
+        console.log("[STATUS]", msg);
+        statusDiv.textContent = `[STATUS] ${msg}`;
+      }
+
+      // ✅ Função principal
+      async function startForClient(nomeCliente) {
+        try {
+          setStatus(`Buscando vídeo do cliente: ${nomeCliente}...`);
+          const data = await window.buscarVideoCliente(nomeCliente);
+          if (!data?.videourl)
+            throw new Error("Campo 'videourl' ausente no Firestore.");
+
+          video.src = data.videourl;
+          setStatus(`Cliente: ${nomeCliente}. Toque em Iniciar e aponte para a imagem.`);
+        } catch (err) {
+          console.error(err);
+          setStatus("Erro Firestore: " + err.message);
         }
-        if (!this.data.videoUrl) return;
+      }
 
-        if (this.videoEl && !this.videoEl.src) { this.videoEl.src=this.data.videoUrl; this.videoEl.load(); }
+      // ✅ Inicialização com parâmetro da URL
+      async function boot() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const cliente = urlParams.get("cliente");
+        if (!cliente) {
+          setStatus("Selecione um cliente para continuar.");
+          return;
+        }
+        await startForClient(cliente);
+      }
 
-        pauseAllOthers(this.videoEl);
-        if (window.soundUnlocked) this.videoEl.muted=false;
+      // ✅ Espera o Firebase estar pronto antes de iniciar
+      (async function waitFirebase() {
+        while (!window.firebaseReady) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        boot();
+      })();
 
-        try { await this.videoEl.play(); } catch(e){ console.warn('Play falhou:', e); }
-        if (this.planeEl) this.planeEl.setAttribute('visible', true);
-      },
-      __onLost() {
-        if (this.videoEl) { this.videoEl.pause(); this.videoEl.removeAttribute('src'); this.videoEl.load(); }
-        if (this.planeEl) this.planeEl.setAttribute('visible', false);
-      },
-      _createVideoAndPlane() {
-        return new Promise((resolve)=>{
-          const v=document.createElement('video');
-          v.id=this.data.videoId; v.preload='none'; v.muted=!window.soundUnlocked; v.setAttribute('playsinline',''); v.loop=true; v.crossOrigin='anonymous';
-          v.addEventListener('loadedmetadata',()=>{
-            const aspect=v.videoWidth/v.videoHeight; const h=2.0, w=h*aspect;
-            const p=document.createElement('a-plane');
-            p.setAttribute('src',`#${v.id}`); p.setAttribute('material','shader: flat; transparent:true; opacity:1;');
-            p.setAttribute('position','0 0 0.05'); p.setAttribute('height',String(h)); p.setAttribute('width',String(w)); p.setAttribute('visible',false);
-            this.el.appendChild(p); this.planeEl=p;
-          });
-          assetsEl.appendChild(v); this.videoEl=v; window.__activeVideos.add(v); resolve();
+      // ✅ Botão "Iniciar" habilita som e vídeo
+      iniciarBtn.addEventListener("click", () => {
+        video.muted = false;
+        video.play().then(() => {
+          setStatus("Som habilitado. Aponte a câmera para a imagem.");
+          iniciarBtn.style.display = "none";
         });
-      }
-    });
-
-    // ===== Fluxo principal =====
-    (function boot() {
-      const clienteParam = getParam("cliente");
-      if (clienteParam && CLIENTS[clienteParam]) startForClient(clienteParam);
-      else {
-        fillClientSelector();
-        pickerEl.style.display='flex';
-        setStatus('Selecione um cliente para continuar.');
-        btnPick.onclick=()=>{
-          const c=clientSelect.value;
-          pickerEl.style.display='none';
-          history.replaceState({}, "", updateUrlParam("cliente", c));
-          startForClient(c);
-        };
-      }
-    })();
-
-    async function startForClient(clienteKey) {
-      const entry=CLIENTS[clienteKey];
-      if (!entry) { setStatus(`Cliente inválido: ${clienteKey}`); return; }
-
-      const alvo=document.querySelector('[cliente-ar]');
-      alvo.setAttribute('cliente-ar',{ nomeCliente: entry.firestore, videoId: 'videoCliente', videoUrl: '' });
-
-      try {
-        const d = await globalThis.buscarVideoCliente(entry.firestore);
-        const url = d?.videourl || '';
-        alvo.setAttribute('cliente-ar',{ nomeCliente: entry.firestore, videoId:'videoCliente', videoUrl:url });
-      } catch(e) { console.error(e); setStatus(`Erro Firestore: ${e.message}`); }
-
-      const mindAttr = `imageTargetSrc: ${entry.mind}?v=${Date.now()}; filterMinCF:0.1; filterBeta:10`;
-      sceneEl.setAttribute('mindar-image', mindAttr);
-
-      gateEl.style.display='flex';
-      setStatus(`Cliente: ${clienteKey}. Toque em Iniciar e aponte para a imagem.`);
-    }
-  </script>
-</body>
+      });
+    </script>
+  </body>
 </html>
