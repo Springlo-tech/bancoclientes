@@ -31,7 +31,7 @@
 
   <!-- Tela inicial para gesto do usuário (desbloqueia áudio) -->
   <div id="gate">
-    <h2 style="margin:0">🎄 Cartão AR</h2>
+    <h2 style="margin:0">Cartão AR</h2>
     <p style="opacity:.8; margin:0 16px; text-align:center">Toque para habilitar o som e iniciar a câmera</p>
     <button id="btnStart">Iniciar</button>
   </div>
@@ -165,20 +165,39 @@
 
       adicionarVideoPlane: function (videoEl) {
         const { videoId, nomeCliente } = this.data;
-        const plane = document.createElement('a-plane');
+        const CARD_ASPECT = 0.75;
+        // Altura base em metros (mantendo o 1.5 que você usou)
+        const BASE_HEIGHT = 1.5; 
+        // Largura do cartão na escala base (1.5 * 0.75 = 1.125)
+        const CARD_WIDTH = BASE_HEIGHT * CARD_ASPECT;
 
-        plane.setAttribute('src', `#${videoId}`);
-        plane.setAttribute('crossorigin', 'anonymous');
-        plane.setAttribute('material', 'shader: flat; transparent: true; opacity: 1;');
-        plane.setAttribute('position', '0 0 0.05');
+        const videoPlane = document.createElement('a-plane');
+        videoPlane.setAttribute('src', `#${videoId}`);
+        videoPlane.setAttribute('crossorigin', 'anonymous');
+        videoPlane.setAttribute('material', 'shader: flat; transparent: true; opacity: 1;');
+        // Posição: 0.005m na frente do target
+        videoPlane.setAttribute('position', '0 0 0.005');
 
-        const aspect = videoEl.videoWidth / videoEl.videoHeight;
-        const baseHeight = 1.0;
-        const baseWidth  = baseHeight * aspect;
+        // Definindo o tamanho do vídeo para ter a proporção EXATA do cartão (3:4)
+        videoPlane.setAttribute('height', BASE_HEIGHT.toString());
+        videoPlane.setAttribute('width', CARD_WIDTH.toString());
+        this.el.appendChild(videoPlane);
 
-        plane.setAttribute('height', baseHeight.toString());
-        plane.setAttribute('width',  baseWidth.toString());
-        this.el.appendChild(plane);
+        // --- 2. Adiciona o PLANO DE FUNDO (atrás) ---
+        const backgroundPlane = document.createElement('a-plane');
+
+        // O fundo deve ter o mesmo tamanho do cartão
+        backgroundPlane.setAttribute('height', BASE_HEIGHT.toString());
+        backgroundPlane.setAttribute('width', CARD_WIDTH.toString());
+        
+        // Colocamos o fundo BEM perto, mas atrás (-0.005m no Z) do plano de vídeo
+        backgroundPlane.setAttribute('position', '0 0 -0.005'); 
+        backgroundPlane.setAttribute('color', '#444444'); // Cor de fundo (você pode mudar esta cor)
+
+        this.el.appendChild(backgroundPlane);
+
+        
+
         console.log(`✅ Plano de vídeo para ${nomeCliente} adicionado (aspect=${aspect.toFixed(3)})`);
       }
     });
