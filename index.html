@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cartão AR Cliente - MindAR (cliente único + economia)</title>
+  <title>Cartão AR - Multi Vídeos</title>
 
-  <!-- A-Frame e MindAR -->
+  <!-- AFRAME + MINDAR -->
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  
 
   <style>
     body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:system-ui,sans-serif; }
@@ -25,196 +26,157 @@
     }
     a-scene { width:100vw; height:100vh; }
   </style>
+
 </head>
 <body>
-  <div id="status">Toque em “Iniciar” para habilitar o som…</div>
 
-  <!-- Tela inicial para gesto do usuário (desbloqueia áudio) -->
-  <div id="gate">
-    <h2 style="margin:0">Cartão AR</h2>
-    <p style="opacity:.8; margin:0 16px; text-align:center">Toque para habilitar o som e iniciar a câmera</p>
-    <button id="btnStart">Iniciar</button>
-  </div>
+<div id="status">Toque em Iniciar…</div>
 
-  <!-- Cena SEM mindar-image inicialmente (vamos setar dinamicamente) -->
-  <a-scene id="scene"
-    renderer="colorManagement: true; physicallyCorrectLights: true"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
+<div id="gate">
+  <h2>Cartão AR</h2>
+  <p>Toque para habilitar o som e iniciar a câmera</p>
+  <button id="btnStart">Iniciar</button>
+</div>
 
-    <a-assets id="assets"></a-assets>
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+<a-scene
+  id="scene"
+  renderer="colorManagement: true; physicallyCorrectLights: true"
+  vr-mode-ui="enabled: false"
+  device-orientation-permission-ui="enabled: false">
 
-    <!-- O entity do target será criado dinamicamente -->
-  </a-scene>
+  <a-assets id="assets"></a-assets>
+  <a-camera look-controls="enabled:false"></a-camera>
 
-  <!-- Firebase (expondo função global) -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
-    import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
+  <a-entity id="anchors"></a-entity>
+</a-scene>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyAQaVmj1MBbIoOCod-vRZvG1Z4DGxo3ZO4",
-      authDomain: "cartao-ar-clientes.firebaseapp.com",
-      projectId: "cartao-ar-clientes",
-    };
 
-    const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
+<!-- FIREBASE -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
+  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
 
-    window.buscarVideoCliente = async function(nomeCliente) {
-      const q = query(collection(db, "clientes"), where("nome", "==", nomeCliente));
-      const snapshot = await getDocs(q);
-      if (snapshot.empty) throw new Error(`Cliente '${nomeCliente}' não encontrado no Firestore`);
-      return snapshot.docs[0].data(); // campo 'videourl'
-    };
-  </script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAQaVmj1MBbIoOCod-vRZvG1Z4DGxo3ZO4",
+    authDomain: "cartao-ar-clientes.firebaseapp.com",
+    projectId: "cartao-ar-clientes",
+  };
 
-  <!-- Lógica principal -->
-  <script>
-    const statusEl = document.getElementById('status');
-    const sceneEl  = document.getElementById('scene');
-    const assetsEl = document.getElementById('assets');
-    const gateEl   = document.getElementById('gate');
-    const btnStart = document.getElementById('btnStart');
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
 
-    function setStatus(msg){ statusEl.textContent = msg; console.log('[STATUS]', msg); }
+  // EXPOSTO GLOBALMENTE
+  window.buscarVideosCliente = async function(cliente){
+    const ref = doc(db, "clientes", cliente);
+    const snap = await getDoc(ref);
 
-    // === 1) Descobre o cliente pela URL e define o arquivo .mind correspondente ===
-    const params = new URLSearchParams(location.search);
-    const clienteParam = (params.get('cliente') || '').trim();
-    // Mapeie aqui seus nomes -> arquivos .mind
-    const mindMap = {
-      'INGRID': 'ingrid.mind',
-      'LAURA' : 'laura.mind'
-    };
-    const nomeCliente = clienteParam.toUpperCase();
-    const mindFile = mindMap[nomeCliente];
+    if (!snap.exists()) return null;
 
-    if (!mindFile) {
-      setStatus('Informe ?cliente=Ingrid ou ?cliente=Laura na URL.');
-    }
+    return snap.data();  // contém { videos: {0:"",1:""} }
+  };
+</script>
 
-    // === 2) Desbloqueia áudio no primeiro toque ===
-    window.soundUnlocked = false;
-    btnStart.addEventListener('click', async () => {
-      try {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (AC) {
-          if (!window._audioCtx) window._audioCtx = new AC();
-          if (window._audioCtx.state !== 'running') await window._audioCtx.resume();
-        }
-        window.soundUnlocked = true;
-        gateEl.style.display = 'none';
-        setStatus('Som habilitado. Aponte para a imagem para iniciar o vídeo.');
-      } catch (e) {
-        console.warn('Falha ao desbloquear áudio:', e);
-        setStatus('Não consegui habilitar o áudio. Tente novamente.');
-      }
+
+<!-- SCRIPT PRINCIPAL -->
+<script>
+const statusEl = document.getElementById("status");
+const gateEl   = document.getElementById("gate");
+const sceneEl  = document.getElementById("scene");
+const assetsEl = document.getElementById("assets");
+const anchorsEl = document.getElementById("anchors");
+const btnStart = document.getElementById("btnStart");
+
+function setStatus(t){ statusEl.textContent = t; console.log("[STATUS]", t); }
+
+let audioEnabled = false;
+
+// Desbloqueio de áudio
+btnStart.onclick = async () =>{
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (AC){
+    window._ctx = window._ctx || new AC();
+    if (window._ctx.state !== "running") await window._ctx.resume();
+  }
+  audioEnabled = true;
+  gateEl.style.display = "none";
+  setStatus("Som habilitado. Aponte o cartão.");
+};
+
+
+async function iniciar(){
+  const params = new URLSearchParams(location.search);
+  const cliente = (params.get("cliente") || "").trim().toLowerCase();
+
+  if (!cliente){
+    setStatus("Erro: use ?cliente=nome");
+    return;
+  }
+
+  const mindPath = `mindar/${cliente}.mind`;
+  sceneEl.setAttribute("mindar-image", `imageTargetSrc: ${mindPath}`);
+
+  setStatus("Carregando vídeos do cliente…");
+
+  const dados = await window.buscarVideosCliente(cliente);
+  if (!dados || !dados.videos){
+    setStatus("Nenhum vídeo encontrado.");
+    return;
+  }
+
+  const videoMap = dados.videos;
+  const keys = Object.keys(videoMap); // ["0","1"]
+
+  setStatus(`${keys.length} vídeo(s) encontrados.`);
+
+  keys.forEach(k =>{
+    const url = videoMap[k];
+    const vidId = `video_${k}`;
+    const anchorId = `anchor_${k}`;
+
+    // create video asset
+    const v = document.createElement("video");
+    v.id = vidId;
+    v.src = url;
+    v.loop = true;
+    v.preload = "auto";
+    v.crossOrigin = "anonymous";
+    v.setAttribute("playsinline","");
+    assetsEl.appendChild(v);
+
+    // create anchor entity
+    const anchor = document.createElement("a-entity");
+    anchor.setAttribute("mindar-image-target", `targetIndex: ${k}`);
+    anchorsEl.appendChild(anchor);
+
+    // create plane for video
+    const plane = document.createElement("a-plane");
+    plane.setAttribute("src", `#${vidId}`);
+    plane.setAttribute("position", "0 0 0");
+    plane.setAttribute("width", "1.2");
+    plane.setAttribute("height", "0.68");
+    plane.setAttribute("material", "shader: flat;");
+    anchor.appendChild(plane);
+
+    // events
+    anchor.addEventListener("targetFound", async () =>{
+      if (audioEnabled) v.muted = false;
+      try{ await v.play(); }catch(e){}
     });
 
-    // === 3) Componente que cria o vídeo e o plano ajustado ===
-    AFRAME.registerComponent('cliente-ar', {
-      schema: { nomeCliente:{type:'string'}, videoId:{type:'string'} },
-
-      init: function () {
-        const { nomeCliente, videoId } = this.data;
-        const targetEl = this.el;
-
-        setStatus(`Buscando vídeo de ${nomeCliente}…`);
-        window.buscarVideoCliente(nomeCliente)
-          .then(dados => {
-            const url = dados.videourl;
-            console.log(`🎬 URL de ${nomeCliente}:`, url);
-            if (!url) { setStatus(`Erro: 'videourl' do cliente ${nomeCliente} está vazio.`); return; }
-
-            const v = document.createElement('video');
-            v.id = videoId;
-            v.src = url;
-            v.preload = 'auto';
-            v.muted = !window.soundUnlocked; // som liga após clique
-            v.setAttribute('playsinline','');
-            v.setAttribute('webkit-playsinline','');
-            v.loop = true;
-            v.crossOrigin = 'anonymous';
-            assetsEl.appendChild(v);
-
-            v.addEventListener('loadedmetadata', () => {
-              this.adicionarVideoPlane(v);
-              setStatus(`Vídeo de ${nomeCliente} carregado. Aponte a câmera.`);
-            });
-
-            targetEl.addEventListener('targetFound', async () => {
-              console.log(`🎯 ${nomeCliente} rastreado`);
-              if (window.soundUnlocked) v.muted = false;
-              try { await v.play(); } catch (err) { console.error('Play falhou:', err); }
-            });
-
-            targetEl.addEventListener('targetLost', () => {
-              console.log(`❌ ${nomeCliente} perdido`);
-              v.pause();
-            });
-
-            v.load();
-          })
-          .catch(err => {
-            console.error(`Erro ao buscar ${nomeCliente}:`, err);
-            setStatus(`Erro ao carregar ${nomeCliente}: ${err.message}`);
-          });
-      },
-
-      adicionarVideoPlane: function (videoEl) {
-        const { videoId, nomeCliente } = this.data;
-        const CARD_ASPECT = 0.75;
-        // Altura base em metros (mantendo o 1.5 que você usou)
-        const BASE_HEIGHT = 1.5; 
-        // Largura do cartão na escala base (1.5 * 0.75 = 1.125)
-        const CARD_WIDTH = BASE_HEIGHT * CARD_ASPECT;
-
-        const videoPlane = document.createElement('a-plane');
-        videoPlane.setAttribute('src', `#${videoId}`);
-        videoPlane.setAttribute('crossorigin', 'anonymous');
-        videoPlane.setAttribute('material', 'shader: flat; transparent: true; opacity: 1;');
-        // Posição: 0.005m na frente do target
-        videoPlane.setAttribute('position', '0 0 0.005');
-
-        // Definindo o tamanho do vídeo para ter a proporção EXATA do cartão (3:4)
-        videoPlane.setAttribute('height', BASE_HEIGHT.toString());
-        videoPlane.setAttribute('width', CARD_WIDTH.toString());
-        this.el.appendChild(videoPlane);
-
-        // --- 2. Adiciona o PLANO DE FUNDO (atrás) ---
-        const backgroundPlane = document.createElement('a-plane');
-
-        // O fundo deve ter o mesmo tamanho do cartão
-        backgroundPlane.setAttribute('height', BASE_HEIGHT.toString());
-        backgroundPlane.setAttribute('width', CARD_WIDTH.toString());
-        
-        // Colocamos o fundo BEM perto, mas atrás (-0.005m no Z) do plano de vídeo
-        backgroundPlane.setAttribute('position', '0 0 -0.005'); 
-        backgroundPlane.setAttribute('color', '#444444'); // Cor de fundo (você pode mudar esta cor)
-
-        this.el.appendChild(backgroundPlane);
-
-        
-
-        console.log(`✅ Plano de vídeo para ${nomeCliente} adicionado (aspect=${aspect.toFixed(3)})`);
-      }
+    anchor.addEventListener("targetLost", () =>{
+      v.pause();
     });
+  });
 
-    // === 4) Monta a cena só para o cliente escolhido (economia de egress) ===
-    (function montarCenaParaUmCliente(){
-      if (!mindFile) return; // já mostramos status pedindo ?cliente=
-      // Seta o .mind correto
-      sceneEl.setAttribute('mindar-image', `imageTargetSrc: ./mindar/${mindFile}; filterMinCF: 0.1; filterBeta: 10`);
+  setStatus("Pronto! Aponte o cartão.");
+}
 
-      // Cria o único target (index 0) com o componente do cliente
-      const entity = document.createElement('a-entity');
-      entity.setAttribute('mindar-image-target', 'targetIndex: 0');
-      entity.setAttribute('cliente-ar', `nomeCliente: ${clienteParam}; videoId: videoDoCliente`);
-      sceneEl.appendChild(entity);
-    })();
-  </script>
+window.addEventListener("DOMContentLoaded", iniciar);
+</script>
+
 </body>
 </html>
+
+
+
 
