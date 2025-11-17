@@ -5,178 +5,217 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cartão AR - Multi Vídeos</title>
 
-  <!-- AFRAME + MINDAR -->
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-  
 
   <style>
-    body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:system-ui,sans-serif; }
-    #status {
-      position:absolute; top:10px; left:50%; transform:translateX(-50%);
-      background:rgba(0,0,0,.7); padding:8px 14px; border-radius:8px; z-index:20; font-size:14px;
-      max-width:92vw; text-align:center; line-height:1.35;
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, sans-serif;
     }
-    #gate {
-      position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-      gap:12px; background:#000; color:#fff; z-index:30;
-    }
-    #gate button{
-      padding:12px 18px; border:0; border-radius:10px; background:#22c55e; color:#fff; font-weight:700; cursor:pointer;
-    }
-    a-scene { width:100vw; height:100vh; }
-  </style>
 
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,.7);
+      padding: 8px 14px;
+      border-radius: 8px;
+      z-index: 20;
+      font-size: 14px;
+      max-width: 92vw;
+      text-align: center;
+      line-height: 1.35;
+    }
+
+    #gate {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: #000;
+      color: #fff;
+      z-index: 30;
+    }
+
+    #gate button {
+      padding: 12px 18px;
+      border: 0;
+      border-radius: 10px;
+      background: #22c55e;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    a-scene {
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
 </head>
+
 <body>
 
-<div id="status">Toque em Iniciar…</div>
+  <div id="status">Toque em Iniciar…</div>
 
-<div id="gate">
-  <h2>Cartão AR</h2>
-  <p>Toque para habilitar o som e iniciar a câmera</p>
-  <button id="btnStart">Iniciar</button>
-</div>
+  <div id="gate">
+    <h2>Cartão AR</h2>
+    <p>Toque para habilitar o som e iniciar a câmera</p>
+    <button id="btnStart">Iniciar</button>
+  </div>
 
-<a-scene
-  id="scene"
-  renderer="colorManagement: true; physicallyCorrectLights: true"
-  vr-mode-ui="enabled: false"
-  device-orientation-permission-ui="enabled: false">
+  <a-scene
+    id="scene"
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
 
-  <a-assets id="assets"></a-assets>
-  <a-camera look-controls="enabled:false"></a-camera>
+    <a-assets id="assets"></a-assets>
+    <a-camera look-controls="enabled:false"></a-camera>
+    <a-entity id="anchors"></a-entity>
+  </a-scene>
 
-  <a-entity id="anchors"></a-entity>
-</a-scene>
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
 
+    const firebaseConfig = {
+      apiKey: "AIzaSyAQaVmj1MBbIoOCod-vRZvG1Z4DGxo3ZO4",
+      authDomain: "cartao-ar-clientes.firebaseapp.com",
+      projectId: "cartao-ar-clientes",
+    };
 
-<!-- FIREBASE -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
-  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyAQaVmj1MBbIoOCod-vRZvG1Z4DGxo3ZO4",
-    authDomain: "cartao-ar-clientes.firebaseapp.com",
-    projectId: "cartao-ar-clientes",
-  };
+    // Exposto globalmente
+    window.buscarVideosCliente = async function(cliente) {
+      const ref = doc(db, "clientes", cliente);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return null;
+      return snap.data(); // { videos: {0:"",1:""} }
+    };
+  </script>
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+  <!-- Lógica principal -->
+  <script>
+    const statusEl  = document.getElementById("status");
+    const gateEl    = document.getElementById("gate");
+    const sceneEl   = document.getElementById("scene");
+    const assetsEl  = document.getElementById("assets");
+    const anchorsEl = document.getElementById("anchors");
+    const btnStart  = document.getElementById("btnStart");
 
-  // EXPOSTO GLOBALMENTE
-  window.buscarVideosCliente = async function(cliente){
-    const ref = doc(db, "clientes", cliente);
-    const snap = await getDoc(ref);
+    function setStatus(t) {
+      statusEl.textContent = t;
+      console.log("[STATUS]", t);
+    }
 
-    if (!snap.exists()) return null;
+    let audioEnabled = false;
 
-    return snap.data();  // contém { videos: {0:"",1:""} }
-  };
-</script>
+    // Desbloqueio de áudio
+    btnStart.onclick = async () => {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        window._ctx = window._ctx || new AC();
+        if (window._ctx.state !== "running") await window._ctx.resume();
+      }
+      audioEnabled = true;
+      gateEl.style.display = "none";
+      setStatus("Som habilitado. Aponte o cartão.");
+    };
 
+    async function iniciar() {
+      const params = new URLSearchParams(location.search);
+      const cliente = (params.get("cliente") || "").trim().toLowerCase();
 
-<!-- SCRIPT PRINCIPAL -->
-<script>
-const statusEl = document.getElementById("status");
-const gateEl   = document.getElementById("gate");
-const sceneEl  = document.getElementById("scene");
-const assetsEl = document.getElementById("assets");
-const anchorsEl = document.getElementById("anchors");
-const btnStart = document.getElementById("btnStart");
+      if (!cliente) {
+        setStatus("Erro: use ?cliente=nome");
+        return;
+      }
 
-function setStatus(t){ statusEl.textContent = t; console.log("[STATUS]", t); }
+      const mindPath = `mindar/${cliente}.mind`;
+      sceneEl.setAttribute("mindar-image", `imageTargetSrc: ${mindPath}`);
 
-let audioEnabled = false;
+      setStatus("Carregando vídeos do cliente…");
+      const dados = await window.buscarVideosCliente(cliente);
 
-// Desbloqueio de áudio
-btnStart.onclick = async () =>{
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (AC){
-    window._ctx = window._ctx || new AC();
-    if (window._ctx.state !== "running") await window._ctx.resume();
-  }
-  audioEnabled = true;
-  gateEl.style.display = "none";
-  setStatus("Som habilitado. Aponte o cartão.");
-};
+      if (!dados || !dados.videos) {
+        setStatus("Nenhum vídeo encontrado.");
+        return;
+      }
 
+      const videoMap = dados.videos;
+      const keys = Object.keys(videoMap);
 
-async function iniciar(){
-  const params = new URLSearchParams(location.search);
-  const cliente = (params.get("cliente") || "").trim().toLowerCase();
+      setStatus(`${keys.length} vídeo(s) encontrados.`);
 
-  if (!cliente){
-    setStatus("Erro: use ?cliente=nome");
-    return;
-  }
+      // Dimensões padrão do cartão (3:4)
+      const CARD_HEIGHT = 1.4;
+      const CARD_WIDTH  = 1.0;
 
-  const mindPath = `mindar/${cliente}.mind`;
-  sceneEl.setAttribute("mindar-image", `imageTargetSrc: ${mindPath}`);
+      keys.forEach(k => {
+        const url = videoMap[k];
+        const vidId = `video_${k}`;
+        const anchorId = `anchor_${k}`;
 
-  setStatus("Carregando vídeos do cliente…");
+        // Vídeo
+        const v = document.createElement("video");
+        v.id = vidId;
+        v.src = url;
+        v.loop = true;
+        v.preload = "auto";
+        v.crossOrigin = "anonymous";
+        v.setAttribute("playsinline", "");
+        assetsEl.appendChild(v);
 
-  const dados = await window.buscarVideosCliente(cliente);
-  if (!dados || !dados.videos){
-    setStatus("Nenhum vídeo encontrado.");
-    return;
-  }
+        // Anchor
+        const anchor = document.createElement("a-entity");
+        anchor.setAttribute("mindar-image-target", `targetIndex: ${k}`);
+        anchorsEl.appendChild(anchor);
 
-  const videoMap = dados.videos;
-  const keys = Object.keys(videoMap); // ["0","1"]
+        // Plano do vídeo
+        const plane = document.createElement("a-plane");
+        plane.setAttribute("src", `#${vidId}`);
+        plane.setAttribute("position", "0 0 0.005");
+        plane.setAttribute("width", CARD_WIDTH);
+        plane.setAttribute("height", CARD_HEIGHT);
+        plane.setAttribute("material", "shader: flat;");
+        anchor.appendChild(plane);
 
-  setStatus(`${keys.length} vídeo(s) encontrados.`);
+        // Fundo cinza opcional
+        const backgroundPlane = document.createElement("a-plane");
+        backgroundPlane.setAttribute("width", CARD_WIDTH);
+        backgroundPlane.setAttribute("height", CARD_HEIGHT);
+        backgroundPlane.setAttribute("position", "0 0 -0.005");
+        backgroundPlane.setAttribute("color", "#444444");
+        anchor.appendChild(backgroundPlane);
 
-  keys.forEach(k =>{
-    const url = videoMap[k];
-    const vidId = `video_${k}`;
-    const anchorId = `anchor_${k}`;
+        // Eventos
+        anchor.addEventListener("targetFound", async () => {
+          if (audioEnabled) v.muted = false;
+          try { await v.play(); } catch(e) {}
+        });
 
-    // create video asset
-    const v = document.createElement("video");
-    v.id = vidId;
-    v.src = url;
-    v.loop = true;
-    v.preload = "auto";
-    v.crossOrigin = "anonymous";
-    v.setAttribute("playsinline","");
-    assetsEl.appendChild(v);
+        anchor.addEventListener("targetLost", () => {
+          v.pause();
+        });
+      });
 
-    // create anchor entity
-    const anchor = document.createElement("a-entity");
-    anchor.setAttribute("mindar-image-target", `targetIndex: ${k}`);
-    anchorsEl.appendChild(anchor);
+      setStatus("Pronto! Aponte o cartão.");
+    }
 
-    // create plane for video
-    const plane = document.createElement("a-plane");
-    plane.setAttribute("src", `#${vidId}`);
-    plane.setAttribute("position", "0 0 0");
-    plane.setAttribute("width", "1.2");
-    plane.setAttribute("height", "0.68");
-    plane.setAttribute("material", "shader: flat;");
-    anchor.appendChild(plane);
-
-    // events
-    anchor.addEventListener("targetFound", async () =>{
-      if (audioEnabled) v.muted = false;
-      try{ await v.play(); }catch(e){}
-    });
-
-    anchor.addEventListener("targetLost", () =>{
-      v.pause();
-    });
-  });
-
-  setStatus("Pronto! Aponte o cartão.");
-}
-
-window.addEventListener("DOMContentLoaded", iniciar);
-</script>
+    window.addEventListener("DOMContentLoaded", iniciar);
+  </script>
 
 </body>
 </html>
-
-
-
-
