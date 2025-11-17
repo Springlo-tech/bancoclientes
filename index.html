@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cartão AR - Multi Vídeos</title>
+  <title>Cartão AR - Multi Vídeos (corrigido)</title>
 
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
@@ -55,10 +55,7 @@
       cursor: pointer;
     }
 
-    a-scene {
-      width: 100vw;
-      height: 100vh;
-    }
+    a-scene { width: 100vw; height: 100vh; }
   </style>
 </head>
 
@@ -81,9 +78,10 @@
     <a-assets id="assets"></a-assets>
     <a-camera look-controls="enabled:false"></a-camera>
     <a-entity id="anchors"></a-entity>
+
   </a-scene>
 
-  <!-- Firebase -->
+  <!-- FIREBASE -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
     import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
@@ -97,16 +95,15 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // Exposto globalmente
     window.buscarVideosCliente = async function(cliente) {
       const ref = doc(db, "clientes", cliente);
       const snap = await getDoc(ref);
       if (!snap.exists()) return null;
-      return snap.data(); // { videos: {0:"",1:""} }
+      return snap.data();
     };
   </script>
 
-  <!-- Lógica principal -->
+  <!-- MINDAR + VÍDEOS (corrigido: sem escala manual) -->
   <script>
     const statusEl  = document.getElementById("status");
     const gateEl    = document.getElementById("gate");
@@ -121,6 +118,16 @@
     }
 
     let audioEnabled = false;
+
+    // Aspect ratios calculados a partir das imagens que você usou ao gerar o .mind
+    // (use exatamente os valores usados para criar o target.mind)
+    const TARGET_ASPECTS = {
+      "0": 890 / 615,    // exemplo: imagem 1
+      "1": 1728 / 2185   // exemplo: imagem 2
+    };
+
+    // Altura base do target (MindAR normaliza o target para altura = 1.0)
+    const TARGET_HEIGHT = 1.0;
 
     // Desbloqueio de áudio
     btnStart.onclick = async () => {
@@ -159,16 +166,11 @@
 
       setStatus(`${keys.length} vídeo(s) encontrados.`);
 
-      // Dimensões padrão do cartão (3:4)
-      const CARD_HEIGHT = 1.4;
-      const CARD_WIDTH  = 1.0;
-
       keys.forEach(k => {
         const url = videoMap[k];
         const vidId = `video_${k}`;
-        const anchorId = `anchor_${k}`;
 
-        // Vídeo
+        // Vídeo (colocado em assets)
         const v = document.createElement("video");
         v.id = vidId;
         v.src = url;
@@ -176,34 +178,42 @@
         v.preload = "auto";
         v.crossOrigin = "anonymous";
         v.setAttribute("playsinline", "");
+        // Alguns navegadores exigem muted para permitir autoplay; deixamos não-muted, mas só desmutamos quando o botão iniciar foi pressionado
+        v.muted = true;
         assetsEl.appendChild(v);
 
-        // Anchor
+        // Anchor para o targetIndex
         const anchor = document.createElement("a-entity");
         anchor.setAttribute("mindar-image-target", `targetIndex: ${k}`);
         anchorsEl.appendChild(anchor);
 
-        // Plano do vídeo
+        // --- CORREÇÃO PRINCIPAL: usar ALTURA = TARGET_HEIGHT (1.0) E largura = aspect * altura ---
+        const aspectRatio = TARGET_ASPECTS[k] || 1.0;
+        const videoHeight = TARGET_HEIGHT;                  // altura = 1.0 (padrão MindAR)
+        const videoWidth  = TARGET_HEIGHT * aspectRatio;    // largura baseada apenas no aspect ratio
+
+        // Plano do vídeo (colocado levemente à frente do target)
         const plane = document.createElement("a-plane");
         plane.setAttribute("src", `#${vidId}`);
         plane.setAttribute("position", "0 0 0.005");
-        plane.setAttribute("width", CARD_WIDTH);
-        plane.setAttribute("height", CARD_HEIGHT);
+        plane.setAttribute("width",  videoWidth.toFixed(4));
+        plane.setAttribute("height", videoHeight.toFixed(4));
         plane.setAttribute("material", "shader: flat;");
         anchor.appendChild(plane);
 
-        // Fundo cinza opcional
+        // (opcional) fundo atrás do vídeo — mantém contraste
         const backgroundPlane = document.createElement("a-plane");
-        backgroundPlane.setAttribute("width", CARD_WIDTH);
-        backgroundPlane.setAttribute("height", CARD_HEIGHT);
+        backgroundPlane.setAttribute("width",  videoWidth.toFixed(4));
+        backgroundPlane.setAttribute("height", videoHeight.toFixed(4));
         backgroundPlane.setAttribute("position", "0 0 -0.005");
-        backgroundPlane.setAttribute("color", "#444444");
+        backgroundPlane.setAttribute("color", "#222");
         anchor.appendChild(backgroundPlane);
 
-        // Eventos
+        // Eventos de reprodução/pause
         anchor.addEventListener("targetFound", async () => {
+          // Desmuta somente se o usuário já permitiu som
           if (audioEnabled) v.muted = false;
-          try { await v.play(); } catch(e) {}
+          try { await v.play(); } catch (e) { console.warn("Erro ao reproduzir vídeo:", e); }
         });
 
         anchor.addEventListener("targetLost", () => {
@@ -219,3 +229,4 @@
 
 </body>
 </html>
+
