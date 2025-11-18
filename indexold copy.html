@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cartão AR - Multi Vídeos (FINAL)</title>
 
-  <!-- A-FRAME + MINDAR -->
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
@@ -107,7 +106,7 @@
   </script>
 
 
-  <!-- MINDAR + MULTI-MIND FINAL -->
+  <!-- MINDAR + VÍDEOS FINAL -->
   <script>
     const statusEl = document.getElementById("status");
     const gateEl = document.getElementById("gate");
@@ -123,43 +122,28 @@
 
     let audioEnabled = false;
 
-    // =======================================================
-    // 🔥 MULTI-MIND: todos os .mind possíveis do cliente
-    // =======================================================
+    // EXTRAÍDO DO ARQUIVO laura.mind
+    // ALTURA = 1.0 (MindAR normaliza)
+    // LARGURA = width/height do target real
+
     const TARGET_PROPS = {
-      "laura.mind": {
-        "0": { aspect: 890 / 615, height: 0.7 },
-        "1": { aspect: 1728 / 2185, height: 1.3 }
-      },
-
-      "ingrid.mind": {
-        "0": { aspect: 1287 / 1748, height: 1.4 }
-      }
-
-      // Adicione aqui quantos .mind quiser:
-      // "cliente2.mind": { "0":{...}, "1":{...} }
+      "0": { aspect: 890 / 615, height: 0.7 },
+      "1": { aspect: 1728 / 2185, height: 1.3 }
     };
 
-
-    // =======================================================
-    // HABILITAR SOM
-    // =======================================================
+    // Botão para habilitar som
     btnStart.onclick = async () => {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (AC) {
         window._ctx = window._ctx || new AC();
         if (window._ctx.state !== "running") await window._ctx.resume();
       }
-
       audioEnabled = true;
       gateEl.style.display = "none";
       setStatus("Som habilitado. Aponte o cartão.");
     };
 
 
-    // =======================================================
-    // INICIAR SISTEMA COMPLETO
-    // =======================================================
     async function iniciar() {
       const params = new URLSearchParams(location.search);
       const cliente = (params.get("cliente") || "").trim().toLowerCase();
@@ -169,19 +153,10 @@
         return;
       }
 
-      // --- detectar todos os .mind do cliente ---
-      let mindFiles = Object.keys(TARGET_PROPS).filter(f => f.startsWith(cliente));
-
-      if (mindFiles.length === 0) {
-        setStatus("Nenhum arquivo .mind encontrado para este cliente.");
-        return;
-      }
-
-      // define o primeiro .mind como o ativo na cena
-      sceneEl.setAttribute("mindar-image", `imageTargetSrc: mindar/${mindFiles[0]}`);
+      const mindPath = `mindar/${cliente}.mind`;
+      sceneEl.setAttribute("mindar-image", `imageTargetSrc: ${mindPath}`);
 
       setStatus("Carregando vídeos do cliente…");
-
       const dados = await window.buscarVideosCliente(cliente);
 
       if (!dados || !dados.videos) {
@@ -194,24 +169,11 @@
 
       setStatus(`${keys.length} vídeo(s) encontrados.`);
 
-      // criar anchors e vídeos
       keys.forEach(k => {
         const url = videoMap[k];
         const vidId = `video_${k}`;
 
-        // encontrar qual .mind contém esse target
-        const mindFile = mindFiles.find(f => TARGET_PROPS[f] && TARGET_PROPS[f][k]);
-        if (!mindFile) {
-          console.warn("TARGET não encontrado para", k);
-          return;
-        }
-
-        const props = TARGET_PROPS[mindFile][k];
-        const aspect = props.aspect;
-        const h = props.height;
-        const w = h * aspect;
-
-        // VIDEO
+        // Elemento <video>
         const v = document.createElement("video");
         v.id = vidId;
         v.src = url;
@@ -222,35 +184,42 @@
         v.muted = true;
         assetsEl.appendChild(v);
 
-        // ANCHOR
+        // Anchor
         const anchor = document.createElement("a-entity");
         anchor.setAttribute("mindar-image-target", `targetIndex: ${k}`);
         anchorsEl.appendChild(anchor);
+
+        // TAMANHO EXATO DO TARGET REAL
+        const aspect = TARGET_PROPS[k].aspect;
+        const videoHeight = TARGET_PROPS[k].height;
+        const videoWidth = videoHeight * aspect;
 
         // PLANO DO VÍDEO
         const plane = document.createElement("a-plane");
         plane.setAttribute("src", `#${vidId}`);
         plane.setAttribute("position", "0 0 0.005");
-        plane.setAttribute("width", w.toFixed(4));
-        plane.setAttribute("height", h.toFixed(4));
+        plane.setAttribute("width", videoWidth.toFixed(4));
+        plane.setAttribute("height", videoHeight.toFixed(4));
         plane.setAttribute("material", "shader: flat;");
         anchor.appendChild(plane);
 
-        // FUNDO
-        const bg = document.createElement("a-plane");
-        bg.setAttribute("width", w.toFixed(4));
-        bg.setAttribute("height", h.toFixed(4));
-        bg.setAttribute("position", "0 0 -0.005");
-        bg.setAttribute("color", "#222");
-        anchor.appendChild(bg);
+        // Fundo opcional
+        const backgroundPlane = document.createElement("a-plane");
+        backgroundPlane.setAttribute("width", videoWidth.toFixed(4));
+        backgroundPlane.setAttribute("height", videoHeight.toFixed(4));
+        backgroundPlane.setAttribute("position", "0 0 -0.005");
+        backgroundPlane.setAttribute("color", "#222");
+        anchor.appendChild(backgroundPlane);
 
-        // EVENTOS
+        // Eventos
         anchor.addEventListener("targetFound", async () => {
           if (audioEnabled) v.muted = false;
-          try { await v.play(); } catch { }
+          try { await v.play(); } catch (e) { console.warn("Erro ao reproduzir vídeo:", e); }
         });
 
-        anchor.addEventListener("targetLost", () => v.pause());
+        anchor.addEventListener("targetLost", () => {
+          v.pause();
+        });
       });
 
       setStatus("Pronto! Aponte o cartão.");
